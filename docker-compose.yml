@@ -1,0 +1,38 @@
+services:
+  qwen38:
+    build:
+      context: .
+      args:
+        VLLM_COMMIT: bcf2be9
+    image: qwen38-v100:local
+    container_name: qwen38-v100
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "${PORT:-8002}:8002"
+    environment:
+      MODEL: "${MODEL:-Max73333/Qwen3.8-27B-GPTQ-Int4-V100}"
+      MODEL_NAME: "${MODEL_NAME:-qwen38}"
+      PORT: "8002"
+      GPU_MEMORY_UTILIZATION: "${GPU_MEMORY_UTILIZATION:-0.90}"
+      MAX_MODEL_LEN: "${MAX_MODEL_LEN:-4096}"
+      MAX_NUM_SEQS: "${MAX_NUM_SEQS:-1}"
+      GDN_PREFILL_BACKEND: "${GDN_PREFILL_BACKEND:-triton}"
+      ENABLE_AUTO_TOOL_CHOICE: "${ENABLE_AUTO_TOOL_CHOICE:-0}"
+      TOOL_CALL_PARSER: "${TOOL_CALL_PARSER:-hermes}"
+      ENFORCE_EAGER: "${ENFORCE_EAGER:-0}"
+      HF_TOKEN: "${HF_TOKEN:-}"
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+      - /data/qwen38-cache:/root/.cache
+      - /data/models/Qwen3.8-27B-GPTQ-Int4:/data/models/Qwen3.8-27B-GPTQ-Int4:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  hf-cache:

@@ -1,0 +1,60 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
+ARG DEBIAN_FRONTEND=noninteractive
+ARG VLLM_COMMIT=bcf2be9
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV NO_PROXY=${NO_PROXY}
+ENV http_proxy=${HTTP_PROXY}
+ENV https_proxy=${HTTPS_PROXY}
+ENV no_proxy=${NO_PROXY}
+ENV CUDA_HOME=/usr/local/cuda
+ENV TORCH_CUDA_ARCH_LIST=7.0
+ENV PATH=/opt/venv/bin:$PATH
+ENV PIP_NO_CACHE_DIR=0
+ENV HF_HOME=/root/.cache/huggingface
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-venv python3-pip python3-dev git curl ca-certificates \
+    build-essential ninja-build cmake && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv && pip install --upgrade pip setuptools wheel setuptools_scm "cmake>=3.26"
+
+RUN --mount=type=cache,target=/root/.cache/pip pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
+    --index-url https://download.pytorch.org/whl/cu128
+
+RUN git clone https://github.com/vllm-project/vllm.git /opt/vllm && \
+    cd /opt/vllm && git checkout "${VLLM_COMMIT}"
+
+COPY patches/ /tmp/patches/
+WORKDIR /opt/vllm
+
+RUN git apply --check /tmp/patches/qwen38-text-only.patch && \
+    git apply /tmp/patches/qwen38-text-only.patch && \
+    git apply --check /tmp/patches/kv-cache-v100.patch && \
+    git apply /tmp/patches/kv-cache-v100.patch
+
+RUN python use_existing_torch.py
+RUN git config --global http.proxy "${HTTP_PROXY}" && \
+    git config --global https.proxy "${HTTPS_PROXY}"
+RUN echo "HTTP_PROXY=${HTTP_PROXY}" && \
+    echo "HTTPS_PROXY=${HTTPS_PROXY}" && \
+    git config --global --get http.proxy && \
+    git config --global --get https.proxy && \
+    git ls-remote https://github.com/vllm-project/flash-attention.git HEAD && \
+    git ls-remote https://github.com/NVIDIA/cutlass.git HEAD
+RUN mkdir -p /opt/vllm/.deps && rm -rf /opt/vllm/.deps/vllm-flash-attn-src
+COPY vendor/flash-attention /opt/vllm/.deps/vllm-flash-attn-src
+ENV VLLM_FLASH_ATTN_SRC_DIR=/opt/vllm/.deps/vllm-flash-attn-src
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/common.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/common.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install "git+https://github.com/huggingface/transformers.git"
+RUN --mount=type=cache,target=/root/.cache/pip pip install -e . --no-build-isolation --no-deps
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+EXPOSE 8002
+ENTRYPOINT ["/entrypoint.sh"]

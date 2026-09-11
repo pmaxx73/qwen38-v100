@@ -1,0 +1,73 @@
+diff --git a/vllm/config/model.py b/vllm/config/model.py
+index b12202f..3debfcb 100644
+--- a/vllm/config/model.py
++++ b/vllm/config/model.py
+@@ -597,6 +597,12 @@ class ModelConfig:
+                 )
+                 mm_encoder_tp_mode = "weights"
+ 
++            if (
++                self.hf_config.architectures
++                and "Qwen3_5ForCausalLM" in self.hf_config.architectures
++            ):
++                language_model_only = True
++
+             mm_config_kwargs = dict(
+                 language_model_only=language_model_only,
+                 limit_per_prompt=limit_mm_per_prompt,
+diff --git a/vllm/model_executor/models/config.py b/vllm/model_executor/models/config.py
+index 881963d..fb1b3b2 100644
+--- a/vllm/model_executor/models/config.py
++++ b/vllm/model_executor/models/config.py
+@@ -671,6 +671,7 @@ MODELS_CONFIG_MAP: dict[str, type[VerifyAndUpdateConfig]] = {
+     "Qwen2ForRewardModel": Qwen2ForRewardModelConfig,
+     "Qwen3ForSequenceClassification": Qwen3ForSequenceClassificationConfig,
+     "Qwen3VLForSequenceClassification": Qwen3VLForSequenceClassificationConfig,
++    "Qwen3_5ForCausalLM": Qwen3_5ForConditionalGenerationConfig,
+     "Qwen3_5ForConditionalGeneration": Qwen3_5ForConditionalGenerationConfig,
+     "Qwen3_5MoeForConditionalGeneration": Qwen3_5ForConditionalGenerationConfig,
+     "VoyageQwen3BidirectionalEmbedModel": VoyageQwen3BidirectionalEmbedModelConfig,
+diff --git a/vllm/model_executor/models/qwen3_5.py b/vllm/model_executor/models/qwen3_5.py
+index 9b1dc74..6f3327a 100644
+--- a/vllm/model_executor/models/qwen3_5.py
++++ b/vllm/model_executor/models/qwen3_5.py
+@@ -112,7 +112,7 @@ logger = init_logger(__name__)
+ 
+ class Qwen3_5ProcessingInfo(Qwen3VLProcessingInfo):
+     def get_hf_config(self):
+-        return self.ctx.get_hf_config(Qwen3_5Config)
++        return self.ctx.get_hf_config()
+ 
+ 
+ class Qwen3_5MoeProcessingInfo(Qwen3VLProcessingInfo):
+diff --git a/vllm/model_executor/models/registry.py b/vllm/model_executor/models/registry.py
+index 51f370b..1aa4676 100644
+--- a/vllm/model_executor/models/registry.py
++++ b/vllm/model_executor/models/registry.py
+@@ -515,6 +515,7 @@ _MULTIMODAL_MODELS = {
+         "qwen3_vl_moe",
+         "Qwen3VLMoeForConditionalGeneration",
+     ),
++    "Qwen3_5ForCausalLM": ("qwen3_5", "Qwen3_5ForCausalLM"),
+     "Qwen3_5ForConditionalGeneration": (
+         "qwen3_5",
+         "Qwen3_5ForConditionalGeneration",
+diff --git a/vllm/renderers/base.py b/vllm/renderers/base.py
+index 1db6149..df5e387 100644
+--- a/vllm/renderers/base.py
++++ b/vllm/renderers/base.py
+@@ -85,7 +85,13 @@ class BaseRenderer(ABC, Generic[_T]):
+ 
+         self.mm_processor: BaseMultiModalProcessor | None = None
+         self._mm_cache_stats: MultiModalCacheStats | None = None
+-        if config.model_config.is_multimodal_model:
++        if (
++            config.model_config.is_multimodal_model
++            and not (
++                config.model_config.multimodal_config
++                and config.model_config.multimodal_config.language_model_only
++            )
++        ):
+             from vllm.multimodal import MULTIMODAL_REGISTRY as mm_registry
+             from vllm.multimodal.registry import MultiModalTimingRegistry
+ 
