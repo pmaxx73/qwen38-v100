@@ -19,7 +19,7 @@ docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 ## Quick start
 
 ```bash
-git clone https://github.com/Max73333/qwen38-v100.git
+git clone --recurse-submodules https://github.com/pmaxx73/qwen38-v100.git
 cd qwen38-v100
 cp .env.example .env
 docker compose build
